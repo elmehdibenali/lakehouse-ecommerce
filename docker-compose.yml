@@ -1,0 +1,10 @@
+services:
+  spark:
+    build: .
+    container_name: spark-lakehouse
+    ports:
+      - "8889:8888"
+      - "4040:4040"
+    volumes:
+      - ./notebooks:/home/work/notebooks
+      - ./data:/home/work/data

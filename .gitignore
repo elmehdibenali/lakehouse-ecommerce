@@ -1,0 +1,15 @@
+# Données (trop lourdes pour Git)
+data/
+
+# Fichier PySpark local
+wheels/
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+
+# Secrets et système
+.env
+.DS_Store
