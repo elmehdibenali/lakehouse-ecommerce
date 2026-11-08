@@ -56,8 +56,10 @@ only showing top 5 rows
 
 
 ### Q2. Grain des tables de détail
-- X commandes sur Y ont plus d'une ligne dans order_items, et Z ont plus d'un
-  paiement dans order_payments.
+- 9 803 commandes sur 98 666 (9,9 %) ont plusieurs lignes dans order_items ;
+  2 961 commandes sur 99 440 (3,0 %) ont plusieurs paiements dans order_payments.
+- Une jointure directe gonfle le CA de 4,5 % (voir preuve).
+- 775 commandes n'ont aucune ligne dans order_items, 1 commande n'a aucun paiement.
 - Conséquence : joindre order_items et order_payments directement duplique les
   lignes et gonfle le CA de N %. Il faut agréger chaque table au grain
   « une ligne par commande » avant de les joindre.
@@ -88,6 +90,9 @@ only showing top 5 rows
 - review_id non unique : un avis peut être rattaché à plusieurs commandes.
 - order_id non unique : certaines commandes ont plusieurs avis (551 lignes en trop).
 - Conséquence : en Silver, garder un seul avis par commande (le plus récent).
+- Lecture par défaut : review_id contenait des fragments de commentaires
+  (colonnes décalées), à cause des retours à la ligne dans les commentaires.
+- Solution : options multiLine, quote et escape.
 
 **Preuve :**
 
@@ -109,8 +114,48 @@ order_id distincts           : 98673
 - 1 000 163 lignes pour 19 015 zip_code_prefix distincts (~52 lignes par code).
 - Conséquence : jointure directe = fan-out massif. En Silver, agréger à une ligne
   par code postal (moyenne lat/lng).
+- Jointure directe customers x geolocation : 99 441 -> 15 083 455 lignes (x152).
+- Après agrégation par zip prefix : 19 015 lignes.
 
-  
+
+```python
+
+df.agg(
+    countDistinct("geolocation_zip_code_prefix").alias("valeurs_distinctes"),
+    count("*").alias("total_lignes")
+).show()
+```
++------------------+------------+
+|valeurs_distinctes|total_lignes|
++------------------+------------+
+|             19015|     1000163|
++------------------+------------+
+
+
+```python
+
+geo = tables["geolocation"]
+clients = tables["customers"]
+
+# Preuve du fan-out
+print("Clients                       :", clients.count())
+print("Après jointure directe        :",
+      clients.join(geo, clients.customer_zip_code_prefix == geo.geolocation_zip_code_prefix).count())
+```
+Clients                       : 99441
+Après jointure directe        : 15083455
+
+```python
+geo_agg = (geo
+          .withColumn("lat", F.col("geolocation_lat").cast("double"))
+          .withColumn("lng", F.col("geolocation_lng").cast("double"))
+           .groupBy("geolocation_zip_code_prefix")
+           .agg(F.avg("lat").alias("lat"), F.avg("lng").alias("lng")))
+print("geo_agg lignes :", geo_agg.count())
+```
+geo_agg lignes : 19015
+
+
 ### Q5. Orphelins entre order_items et orders
 - 0 ligne de order_items sans commande correspondante : intégrité OK dans ce sens.
 - 775 commandes sans aucune ligne produit : unavailable 603, canceled 164,
@@ -122,7 +167,41 @@ order_id distincts           : 98673
   que les supprimer. Exclure unavailable et canceled des KPI de CA, mais les
   conserver pour mesurer le taux d'annulation.
 
+```python
+orders = tables["orders"]
+items = tables["order_items"]
+
+# Q5 : order_id dans order_items mais absents de orders
+orphelins = items.join(orders, "order_id", "left_anti")
+print("Lignes orphelines dans order_items :", orphelins.count())
+
+# Bonus : commandes sans aucune ligne dans order_items (attendu : 775)
+sans_produit = orders.join(items, "order_id", "left_anti")
+print("Commandes sans produit :", sans_produit.count())
+
+sans_produit.groupBy("order_status").count().orderBy(F.desc("count")).show()
+
+```
+
+Lignes orphelines dans order_items : 0
+Commandes sans produit : 775
++------------+-----+
+|order_status|count|
++------------+-----+
+| unavailable|  603|
+|    canceled|  164|
+|     created|    5|
+|    invoiced|    2|
+|     shipped|    1|
++------------+-----+
+
+
 ## 4. Points de vigilance pour Silver
 - Toujours utiliser `customer_unique_id` pour les analyses par client.
-- Éviter le fan-out lors des jointures (agréger avant de joindre).
-- Dédoublonner `geolocation` avant toute jointure.
+- Agréger order_items, order_payments et order_reviews à une ligne par commande
+  avant de joindre.
+- Agréger `geolocation` à une ligne par code postal.
+- Lire `order_reviews` avec multiLine, quote et escape.
+- Pour order_reviews, garder l'avis le plus récent (row_number), avec un second
+  critère de tri (review_id) pour un résultat déterministe.
+- Signaler les commandes sans produit (has_items = false) plutôt que les supprimer.
