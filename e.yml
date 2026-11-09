@@ -1,0 +1,9 @@
+[33mdecae72[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m feat: spark optimisation (plans, broadcast vs sort-merge, AQE/shuffle partitions, cache, RDD) with measured baselines
+[33me29d62d[m[33m ([m[1;31morigin/main[m[33m)[m feat: gold layer complete (star schema, M1-M6 KPIs, revenue reconciliation, partition benchmark)
+[33m4192db0[m silver part completed
+[33m95f55c8[m docs: bronze audit report and silver rules specification
+[33me93617a[m docs: complete dataset schema analysis and business framing
+[33m05579b0[m docs: add business framing and complete schema analysis
+[33m3f12f69[m docs: complete dataset schema analysis
+[33m14dadf0[m docs: add dataset schema analysis
+[33mff5f876[m chore: initial project structure with Docker setup
